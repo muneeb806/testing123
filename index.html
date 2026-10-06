@@ -1,107 +1,113 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>User Profile with Login</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; background: #f9f9f9; }
-    .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 15px rgba(0,0,0,0.1); text-align: center; }
-    img { width: 150px; height: 150px; object-fit: cover; border-radius: 50%; margin-bottom: 20px; }
-    input, textarea, button { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
-    button { background: #007bff; color: white; cursor: pointer; font-size: 16px; border: none; }
-    button:hover { background: #0056b3; }
-    .profile-info { text-align: left; margin-top: 20px; }
-    hr { margin: 20px 0; border: none; border-top: 1px solid #eee; }
-  </style>
-</head>
-<body>
-
-<div class="container" id="app"></div>
-
 <script>
   const app = document.getElementById('app');
-  // Dynamic API URL that works automatically on your Nginx server via reverse proxy mapping
-  const API_URL = '/api'; 
+  const API_URL = window.location.origin; // Dynamically targets your server URL
 
+  // Check login by fetching profile from the backend session/email
   async function checkLogin() {
-    const email = localStorage.getItem('userEmail');
-    if (!email) { return showLoginForm(); }
-
-    try {
-      const res = await fetch(`${API_URL}/profile?email=${encodeURIComponent(email)}`);
-      if (res.ok) {
-        const user = await res.json();
-        showProfile(user);
-      } else {
-        showLoginForm();
+    const savedEmail = localStorage.getItem('userEmail');
+    if (savedEmail) {
+      try {
+        const response = await fetch(`${API_URL}/api/profile/${savedEmail}`);
+        if (response.ok) {
+          const user = await response.json();
+          showProfile(user);
+          return;
+        }
+      } catch (err) {
+        console.error("Backend error, falling back to form:", err);
       }
-    } catch (err) {
-      showLoginForm();
     }
+    showLoginForm();
   }
 
   function showLoginForm(existingUser = {}) {
     const defaultPic = "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=300&h=300&fit=crop&crop=face";
+
     app.innerHTML = `
       <h1>${existingUser.name ? 'Edit Profile' : 'Create Your Profile'}</h1>
-      <div><img src="${existingUser.picture || defaultPic}" alt="Profile" id="preview"></div>
+      <div>
+        <img src="${existingUser.picture || defaultPic}" alt="Profile" id="preview">
+      </div>
       <input type="file" id="picture" accept="image/*">
       <input type="text" id="name" placeholder="Name" value="${existingUser.name || ''}" required>
-      <input type="email" id="email" placeholder="Email" value="${existingUser.email || ''}" ${existingUser.email ? 'readonly style="background:#eee;"' : 'required'}>
+      <input type="email" id="email" placeholder="Email" value="${existingUser.email || ''}" required ${existingUser.email ? 'disabled' : ''}>
       <textarea id="interests" placeholder="Interests" rows="3">${existingUser.interests || ''}</textarea>
-      <button onclick="saveProfile()">${existingUser.name ? 'Update Profile' : 'Save & Continue'}</button>
+      <button onclick="saveProfile('${existingUser.email ? 'update' : 'create'}')">${existingUser.name ? 'Update Profile' : 'Save & Continue'}</button>
     `;
 
     document.getElementById('picture').addEventListener('change', function(e) {
       if (e.target.files[0]) {
         const reader = new FileReader();
-        reader.onload = function(ev) { document.getElementById('preview').src = ev.target.result; };
+        reader.onload = function(ev) {
+          document.getElementById('preview').src = ev.target.result;
+        };
         reader.readAsDataURL(e.target.files[0]);
       }
     });
   }
 
-  async function saveProfile() {
+  async function saveProfile(action) {
     const name = document.getElementById('name').value.trim();
     const email = document.getElementById('email').value.trim();
     const interests = document.getElementById('interests').value.trim();
+    const pictureInput = document.getElementById('picture');
     const previewSrc = document.getElementById('preview').src;
 
-    if (!name || !email) { return alert('Name and email are required!'); }
+    if (!name || !email) {
+      alert('Name and email are required!');
+      return;
+    }
 
-    const user = { name, email, interests, picture: previewSrc };
+    // Prepare Multipart Form Data to handle both text fields and files cleanly
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('email', email);
+    formData.append('interests', interests);
+    
+    if (pictureInput.files[0]) {
+      formData.append('picture', pictureInput.files[0]);
+    } else {
+      formData.append('picture_url', previewSrc);
+    }
 
     try {
-      const res = await fetch(`${API_URL}/profile`, {
+      const response = await fetch(`${API_URL}/api/profile`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user)
+        body: formData
       });
-      if (res.ok) {
+
+      if (response.ok) {
+        const result = await response.json();
         localStorage.setItem('userEmail', email);
-        showProfile(user);
+        showProfile(result.user);
       } else {
-        const errData = await res.json();
-        alert('Error: ' + errData.error);
+        const errData = await response.json();
+        alert('Error: ' + errData.message);
       }
     } catch (err) {
-      alert('Could not connect to Python backend backend.');
+      alert('Failed to connect to backend.');
     }
   }
 
   function showProfile(user) {
+    const defaultDog = "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=300&h=300&fit=crop&crop=face";
+    // If the image path is a local route, prepend your domain rule
+    const imgSrc = user.picture && !user.picture.startsWith('http') ? `${API_URL}${user.picture}` : (user.picture || defaultDog);
+
     app.innerHTML = `
       <h1>User profile</h1>
-      <img src="${user.picture}" alt="Profile picture">
+      <img src="${imgSrc}" alt="Profile picture">
       <div class="profile-info">
-        <p><strong>Name:</strong> ${user.name}</p><hr>
-        <p><strong>Email:</strong> ${user.email}</p><hr>
+        <p><strong>Name:</strong> ${user.name || 'Not set'}</p>
+        <hr>
+        <p><strong>Email:</strong> ${user.email || 'Not set'}</p>
+        <hr>
         <p><strong>Interests:</strong> ${user.interests || 'None added yet'}</p>
       </div>
       <button onclick="showLoginForm(window.currentUser)">Edit Profile</button>
       <button style="margin-top:10px; background:#dc3545;" onclick="logout()">Logout</button>
     `;
+
     window.currentUser = user;
   }
 
@@ -112,5 +118,3 @@
 
   checkLogin();
 </script>
-</body>
-</html>
