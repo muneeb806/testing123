@@ -1,154 +1,125 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>User Profile with Login</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 500px;
-      margin: 40px auto;
-      padding: 20px;
-      background: #f9f9f9;
-    }
-    .container {
-      background: white;
-      padding: 30px;
-      border-radius: 10px;
-      box-shadow: 0 2px 15px rgba(0,0,0,0.1);
-      text-align: center;
-    }
-    img {
-      width: 150px;
-      height: 150px;
-      object-fit: cover;
-      border-radius: 50%;
-      margin-bottom: 20px;
-    }
-    input, textarea, button {
-      width: 100%;
-      padding: 10px;
-      margin: 10px 0;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-    }
-    button {
-      background: #007bff;
-      color: white;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    button:hover { background: #0056b3; }
-    .profile-info {
-      text-align: left;
-      margin-top: 20px;
-    }
-    hr {
-      margin: 20px 0;
-      border: none;
-      border-top: 1px solid #eee;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile with Database</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; background: #f9f9f9; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 15px rgba(0,0,0,0.1); text-align: center; }
+        img { width: 150px; height: 150px; object-fit: cover; border-radius: 50%; margin-bottom: 20px; }
+        input, textarea, button { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        button { background: #007bff; color: white; cursor: pointer; font-size: 16px; border: none; }
+        button:hover { background: #0056b3; }
+        .profile-info { text-align: left; margin-top: 20px; }
+        hr { margin: 20px 0; border: none; border-top: 1px solid #eee; }
+    </style>
 </head>
 <body>
-
-<div class="container" id="app">
-  <!-- This will be filled by JavaScript -->
-</div>
+<div class="container" id="app"></div>
 
 <script>
-  const app = document.getElementById('app');
+    const app = document.getElementById('app');
+    const API_URL = '/api/profile'; // Routed automatically through Nginx reverse proxy
 
-  // Check if user already logged in (data in localStorage)
-  function checkLogin() {
-    const user = JSON.parse(localStorage.getItem('userProfile'));
-    if (user) {
-      showProfile(user);
-    } else {
-      showLoginForm();
-    }
-  }
-
-  // Show Login / Edit Form
-  function showLoginForm(existingUser = {}) {
-    const defaultPic = "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=300&h=300&fit=crop&crop=face"; // cute dog as default
-
-    app.innerHTML = `
-      <h1>${existingUser.name ? 'Edit Profile' : 'Create Your Profile'}</h1>
-      <div>
-        <img src="${existingUser.picture || defaultPic}" alt="Profile" id="preview">
-      </div>
-      <input type="file" id="picture" accept="image/*">
-      <input type="text" id="name" placeholder="Name" value="${existingUser.name || ''}" required>
-      <input type="email" id="email" placeholder="Email" value="${existingUser.email || ''}" required>
-      <textarea id="interests" placeholder="Interests (e.g. coding, music, dogs)" rows="3">${existingUser.interests || ''}</textarea>
-      <button onclick="saveProfile()">${existingUser.name ? 'Update Profile' : 'Save & Continue'}</button>
-    `;
-
-    // Preview uploaded image
-    document.getElementById('picture').addEventListener('change', function(e) {
-      if (e.target.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(ev) {
-          document.getElementById('preview').src = ev.target.result;
-        };
-        reader.readAsDataURL(e.target.files[0]);
-      }
-    });
-  }
-
-  // Save profile to localStorage
-  function saveProfile() {
-    const name = document.getElementById('name').value.trim();
-    const email = document.getElementById('email').value.trim();
-    const interests = document.getElementById('interests').value.trim();
-    const pictureInput = document.getElementById('picture');
-    const previewSrc = document.getElementById('preview').src;
-
-    if (!name || !email) {
-      alert('Name and email are required!');
-      return;
+    // Check if user profile exists in database on load
+    async function checkProfile() {
+        try {
+            const res = await fetch(API_URL);
+            if (res.status === 200) {
+                const user = await res.json();
+                showProfile(user);
+            } else {
+                showLoginForm();
+            }
+        } catch (err) {
+            console.error("Error connecting to backend:", err);
+            showLoginForm();
+        }
     }
 
-    const picture = pictureInput.files[0] ? previewSrc : (previewSrc.includes('unsplash') ? previewSrc : '');
+    function showLoginForm(existingUser = {}) {
+        const defaultPic = "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=300&h=300&fit=crop&crop=face";
+        app.innerHTML = `
+            <h1>${existingUser.name ? 'Edit Profile' : 'Create Your Profile'}</h1>
+            <div>
+                <img src="${existingUser.picture || defaultPic}" alt="Profile" id="preview">
+            </div>
+            <input type="file" id="picture" accept="image/*">
+            <input type="text" id="name" placeholder="Name" value="${existingUser.name || ''}" required>
+            <input type="email" id="email" placeholder="Email" value="${existingUser.email || ''}" required>
+            <textarea id="interests" placeholder="Interests" rows="3">${existingUser.interests || ''}</textarea>
+            <button onclick="saveProfile()">${existingUser.name ? 'Update Profile' : 'Save & Continue'}</button>
+        `;
 
-    const user = { name, email, interests, picture };
-    localStorage.setItem('userProfile', JSON.stringify(user));
-    showProfile(user);
-  }
+        document.getElementById('picture').addEventListener('change', function(e) {
+            if (e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(ev) { document.getElementById('preview').src = ev.target.result; };
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+    }
 
-  // Show the profile (like your screenshot)
-  function showProfile(user) {
-    const defaultDog = "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=300&h=300&fit=crop&crop=face";
+    async function saveProfile() {
+        const name = document.getElementById('name').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const interests = document.getElementById('interests').value.trim();
+        const pictureInput = document.getElementById('picture');
+        const previewSrc = document.getElementById('preview').src;
 
-    app.innerHTML = `
-      <h1>User profile</h1>
-      <img src="${user.picture || defaultDog}" alt="Profile picture">
-      <div class="profile-info">
-        <p><strong>Name:</strong> ${user.name || 'Not set'}</p>
-        <hr>
-        <p><strong>Email:</strong> ${user.email || 'Not set'}</p>
-        <hr>
-        <p><strong>Interests:</strong> ${user.interests || 'None added yet'}</p>
-      </div>
-      <button onclick="showLoginForm(user)">Edit Profile</button>
-      <button style="margin-top:10px; background:#dc3545;" onclick="logout()">Logout</button>
-    `;
+        if (!name || !email) {
+            alert('Name and email are required!');
+            return;
+        }
 
-    // Pass current user data when editing
-    window.user = user;
-  }
+        // Base64 file string logic or default fallback
+        const picture = pictureInput.files[0] ? previewSrc : (previewSrc.includes('unsplash') ? '' : previewSrc);
 
-  // Logout - clear data
-  function logout() {
-    localStorage.removeItem('userProfile');
-    showLoginForm();
-  }
+        const payload = { name, email, interests, picture };
 
-  // Start the app
-  checkLogin();
+        try {
+            const res = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                const updatedUser = await res.json();
+                showProfile(updatedUser);
+            } else {
+                alert('Failed to save profile details.');
+            }
+        } catch (err) {
+            alert('Server error occurred.');
+        }
+    }
+
+    function showProfile(user) {
+        const defaultDog = "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=300&h=300&fit=crop&crop=face";
+        app.innerHTML = `
+            <h1>User profile</h1>
+            <img src="${user.picture || defaultDog}" alt="Profile picture">
+            <div class="profile-info">
+                <p><strong>Name:</strong> ${user.name || 'Not set'}</p>
+                <hr>
+                <p><strong>Email:</strong> ${user.email || 'Not set'}</p>
+                <hr>
+                <p><strong>Interests:</strong> ${user.interests || 'None added yet'}</p>
+            </div>
+            <button onclick='showLoginForm(${JSON.stringify(user)})'>Edit Profile</button>
+            <button style="margin-top:10px; background:#dc3545;" onclick="clearProfileData()">Delete Profile</button>
+        `;
+    }
+
+    async function clearProfileData() {
+        if(confirm("Are you sure you want to delete this profile layout?")) {
+            await fetch(API_URL, { method: 'DELETE' });
+            showLoginForm();
+        }
+    }
+
+    checkProfile();
 </script>
-
 </body>
 </html>
